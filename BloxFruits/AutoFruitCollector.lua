@@ -1,5 +1,5 @@
 --[[
-Blox Fruits Auto Fruit Collector v1.2.1
+Blox Fruits Auto Fruit Collector v1.3.0
 Delta Android / Arceus X
 Client-side helper: scans Workspace for spawned fruit models, ESP, notifications,
 and makes a best-effort touch pickup attempt. Server pickup is not guaranteed.
@@ -9,9 +9,9 @@ local Workspace = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local CFG = { ScanInterval = 2, MaxDistance = 5000, Cooldown = 10, PickupWait = 0.85, FlightSpeed = 95, ArrivalDistance = 7, FlightTimeout = 30 }
+local CFG = { ScanInterval = 5, RescanInterval = 6, MaxDistance = 5000, Cooldown = 10, PickupWait = 0.85, FlightSpeed = 68, FlightAcceleration = 7, ArrivalDistance = 7, CruiseHeight = 160 }
 local State = {
-    Running = false, ESP = false, Notify = true, Filter = "", HasScanned = false, FlightToken = 0,
+    Running = false, ESP = false, Notify = true, Filter = "", HasScanned = false, LastFullScan = 0, FlightToken = 0,
     Fruits = {}, LastAttempt = {}, ESPObjects = {}, ListRows = {}, Attempts = 0, Pickups = 0, Alive = true
 }
 local function safeDestroy(x) if x then pcall(function() x:Destroy() end) end end
@@ -179,7 +179,7 @@ Stats.TextXAlignment=Enum.TextXAlignment.Left; Stats.Parent=Main
 local Footer=Instance.new("TextLabel")
 Footer.Position=UDim2.fromOffset(11,296); Footer.Size=UDim2.new(1,-22,0,18)
 Footer.BackgroundTransparency=1; Footer.Font=Enum.Font.Gotham
-Footer.Text="Перемещение: плавный полёт"
+Footer.Text="Маршрут: набор высоты → перелёт → снижение"
 Footer.TextColor3=Color3.fromRGB(105,119,151); Footer.TextSize=8
 Footer.TextXAlignment=Enum.TextXAlignment.Left; Footer.Parent=Main
 local Min=button("Minimize","—",UDim2.new(1,-61,0,8),UDim2.fromOffset(23,25),Color3.fromRGB(48,56,85))
@@ -259,7 +259,7 @@ local function fitMainToScreen()
     if not camera then return end
     local viewport = camera.ViewportSize
     local scale = math.min(1, (viewport.X - 16) / 280, (viewport.Y - 16) / 440)
-    scale = math.max(0.55, scale)
+    scale = math.clamp(scale, 0.35, 1)
     local uiScale = Main:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")
     uiScale.Scale = scale
     uiScale.Parent = Main
@@ -294,7 +294,7 @@ DragHandle.InputBegan:Connect(function(input)
         dragging = true
         dragInput = input
         dragStart = input.Position
-        startPosition = Main.Position
+        startPosition = Main.AbsolutePosition
     end
 end)
 UIS.InputChanged:Connect(function(input)
@@ -304,11 +304,10 @@ UIS.InputChanged:Connect(function(input)
         local camera = Workspace.CurrentCamera
         if not camera then return end
         local viewport = camera.ViewportSize
-        local scale = Main:FindFirstChildOfClass("UIScale")
         local w = Main.AbsoluteSize.X
         local h = Main.AbsoluteSize.Y
-        local x = math.clamp(startPosition.X.Offset + delta.X, 0, math.max(0,viewport.X-w))
-        local y = math.clamp(startPosition.Y.Offset + delta.Y, 0, math.max(0,viewport.Y-h))
+        local x = math.clamp(startPosition.X + delta.X, 0, math.max(0,viewport.X-w))
+        local y = math.clamp(startPosition.Y + delta.Y, 0, math.max(0,viewport.Y-h))
         Main.Position = UDim2.fromOffset(x,y)
     end
 end)
@@ -420,47 +419,78 @@ local function updateFruitList()
     ListCount.Text = tostring(#entries)
     EmptyList.Visible = #entries == 0
 end
-local function scan()
-    if State.HasScanned then
-        if State.ESP then for obj in pairs(State.Fruits) do if obj and obj.Parent then addESP(obj) end end end
+local function matchesFilter(obj)
+    if State.Filter == "" then return true end
+    local filter = string.lower(State.Filter)
+    local name = string.lower(obj.Name or "")
+    local displayName = string.lower(fruitName(obj))
+    return name:find(filter,1,true) ~= nil or displayName:find(filter,1,true) ~= nil
+end
+
+local function registerFruit(obj)
+    if not isFruit(obj) or not matchesFilter(obj) then return false end
+    if not State.Fruits[obj] then
+        State.Fruits[obj] = true
+        notify("ПОЯВИЛСЯ ФРУКТ", fruitName(obj))
+    end
+    if State.ESP then addESP(obj) end
+    return true
+end
+
+local function scan(force)
+    local now = os.clock()
+    if not force and State.HasScanned and now - State.LastFullScan < CFG.RescanInterval then
         updateFruitList()
         return State.Fruits
     end
-    local found={}
+
     for _,obj in ipairs(Workspace:GetDescendants()) do
         if isFruit(obj) then
-            local n=string.lower(obj.Name)
-            if State.Filter=="" or n:find(string.lower(State.Filter),1,true) or string.lower(fruitName(obj)):find(string.lower(State.Filter),1,true) then
-                found[obj]=true
-                if not State.Fruits[obj] then
-                    State.Fruits[obj]=true
-                    notify("ПОЯВИЛСЯ ФРУКТ",fruitName(obj))
-                end
-                if State.ESP then addESP(obj) end
-            end
+            registerFruit(obj)
         end
     end
+
     for obj in pairs(State.Fruits) do
         if not obj or not obj.Parent or not obj:IsDescendantOf(Workspace) then
-            State.Fruits[obj]=nil; State.LastAttempt[obj]=nil; removeESP(obj)
+            State.Fruits[obj] = nil
+            State.LastAttempt[obj] = nil
+            removeESP(obj)
+            removeListRow(obj)
+        elseif not matchesFilter(obj) then
+            State.Fruits[obj] = nil
+            State.LastAttempt[obj] = nil
+            removeESP(obj)
+            removeListRow(obj)
         end
     end
+
     State.HasScanned = true
+    State.LastFullScan = now
     updateFruitList()
-    return found
+    return State.Fruits
 end
 
--- After the initial world scan, watch newly spawned objects instead of rescanning all Workspace.
+-- Resolve added parts back to their fruit model/tool. Some games replicate the
+-- container first and its Handle/parts a moment later.
+local function findFruitContainer(obj)
+    local current = obj
+    while current and current ~= Workspace do
+        if (current:IsA("Model") or current:IsA("Tool") or current:IsA("BasePart"))
+            and string.lower(current.Name or ""):sub(-5) == "fruit"
+            and isFruit(current) then
+            return current
+        end
+        current = current.Parent
+    end
+    return nil
+end
+
 Workspace.DescendantAdded:Connect(function(obj)
-    task.delay(0.2, function()
-        if not State.Alive or not (State.Running or State.ESP) or not isFruit(obj) then return end
-        local n = string.lower(obj.Name)
-        if State.Filter ~= "" and not n:find(string.lower(State.Filter),1,true)
-            and not string.lower(fruitName(obj)):find(string.lower(State.Filter),1,true) then return end
-        if not State.Fruits[obj] then
-            State.Fruits[obj] = true
-            if State.ESP then addESP(obj) end
-            notify("ПОЯВИЛСЯ ФРУКТ", fruitName(obj))
+    task.delay(0.15, function()
+        if not State.Alive or not (State.Running or State.ESP) then return end
+        local container = findFruitContainer(obj)
+        if container then
+            registerFruit(container)
             updateFruitList()
         end
     end)
@@ -485,15 +515,24 @@ end
 local function flyToFruit(obj)
     local characterModel = character()
     local humanoid = characterModel and characterModel:FindFirstChildOfClass("Humanoid")
-    local r = root()
+    local flightRoot = root()
     local part = obj and fruitPart(obj)
-    if not r or not part or not humanoid then return false end
+    if not flightRoot or not part or not humanoid or humanoid.Health <= 0 then return false end
 
     State.FlightToken = State.FlightToken + 1
     local myToken = State.FlightToken
+
+    -- Remove leftovers from a previously interrupted execution.
+    for _, child in ipairs(flightRoot:GetChildren()) do
+        if child.Name == "FruitFlightVelocity" or child.Name == "FruitFlightOrientation"
+            or child.Name == "FruitFlightAttachment" then
+            safeDestroy(child)
+        end
+    end
+
     local attachment = Instance.new("Attachment")
     attachment.Name = "FruitFlightAttachment"
-    attachment.Parent = r
+    attachment.Parent = flightRoot
 
     local velocity = Instance.new("LinearVelocity")
     velocity.Name = "FruitFlightVelocity"
@@ -501,66 +540,97 @@ local function flyToFruit(obj)
     velocity.RelativeTo = Enum.ActuatorRelativeTo.World
     velocity.MaxForce = math.huge
     velocity.VectorVelocity = Vector3.zero
-    velocity.Parent = r
+    velocity.Parent = flightRoot
 
     local orient = Instance.new("AlignOrientation")
     orient.Name = "FruitFlightOrientation"
     orient.Mode = Enum.OrientationAlignmentMode.OneAttachment
     orient.Attachment0 = attachment
     orient.MaxTorque = math.huge
-    orient.Responsiveness = 18
-    orient.Parent = r
+    orient.Responsiveness = 14
+    orient.Parent = flightRoot
 
+    local RunService = game:GetService("RunService")
     local started = os.clock()
     local arrived = false
-    local RunService = game:GetService("RunService")
-    -- Cruise above both the player's starting point and the fruit. Do not aim
-    -- directly at a low target while crossing the sea.
-    local cruiseY = math.max(r.Position.Y, part.Position.Y) + 140
+    local phase = "ASCEND"
+    local cruiseY = math.max(flightRoot.Position.Y, part.Position.Y) + CFG.CruiseHeight
+    local startXZ = Vector3.new(flightRoot.Position.X, 0, flightRoot.Position.Z)
     local landingOffset = Vector3.new(0, 8, 0)
-    local descending = false
+    local horizontalDistance = Vector3.new(
+        part.Position.X - flightRoot.Position.X, 0,
+        part.Position.Z - flightRoot.Position.Z
+    ).Magnitude
+    local plannedDistance = math.abs(cruiseY - flightRoot.Position.Y)
+        + horizontalDistance + math.abs(cruiseY - part.Position.Y)
+    local timeout = math.clamp((plannedDistance / CFG.FlightSpeed) * 2 + 18, 25, 180)
+    local smoothedVelocity = Vector3.zero
+
     humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+    status("Набираю безопасную высоту...")
 
     while State.Alive and State.Running and State.FlightToken == myToken
-        and os.clock() - started < CFG.FlightTimeout do
+        and os.clock() - started < timeout do
+
         if not obj or not obj.Parent or not obj:IsDescendantOf(Workspace) then break end
-        r = root()
+        if character() ~= characterModel or humanoid.Health <= 0 then break end
+
+        local currentRoot = root()
         part = fruitPart(obj)
-        if not r or not part then break end
+        if not currentRoot or currentRoot ~= flightRoot or not part then break end
 
         local targetPosition
-        local horizontal = Vector3.new(part.Position.X - r.Position.X, 0, part.Position.Z - r.Position.Z)
-        if not descending and horizontal.Magnitude <= 12 then
-            descending = true
-        end
-
-        if descending then
-            -- Only descend once directly above the fruit.
-            targetPosition = part.Position + landingOffset
-        else
+        if phase == "ASCEND" then
+            -- First gain altitude without moving horizontally over the sea.
+            targetPosition = Vector3.new(startXZ.X, cruiseY, startXZ.Z)
+            if math.abs(flightRoot.Position.Y - cruiseY) <= 8 then
+                phase = "CRUISE"
+                status("Высота набрана. Лечу к фрукту...")
+            end
+        elseif phase == "CRUISE" then
+            -- Keep altitude until directly above the target.
             targetPosition = Vector3.new(part.Position.X, cruiseY, part.Position.Z)
+            local horizontal = Vector3.new(
+                part.Position.X - flightRoot.Position.X, 0,
+                part.Position.Z - flightRoot.Position.Z
+            ).Magnitude
+            if horizontal <= 14 then
+                phase = "DESCEND"
+                status("Фрукт подо мной. Снижаюсь...")
+                targetPosition = part.Position + landingOffset
+            end
+        else
+            targetPosition = part.Position + landingOffset
         end
 
-        local offset = targetPosition - r.Position
+        local offset = targetPosition - flightRoot.Position
         local distance = offset.Magnitude
-        if descending and distance <= CFG.ArrivalDistance then
+        if phase == "DESCEND" and distance <= CFG.ArrivalDistance then
             arrived = true
             break
         end
 
-        local direction = distance > 0.01 and offset.Unit or Vector3.zero
-        local speed = math.min(CFG.FlightSpeed, math.max(18, distance * 1.25))
-        velocity.VectorVelocity = direction * speed
+        local direction = distance > 0.05 and offset.Unit or Vector3.zero
+        local speedLimit = phase == "DESCEND" and 28 or CFG.FlightSpeed
+        local desiredSpeed = math.min(speedLimit, math.max(12, distance * 1.15))
+        local desiredVelocity = direction * desiredSpeed
+        local dt = RunService.Heartbeat:Wait()
+        local blend = math.clamp(dt * CFG.FlightAcceleration, 0, 1)
+        smoothedVelocity = smoothedVelocity:Lerp(desiredVelocity, blend)
+        velocity.VectorVelocity = smoothedVelocity
+
         if direction.Magnitude > 0 then
-            orient.CFrame = CFrame.lookAt(r.Position, r.Position + direction)
+            orient.CFrame = CFrame.lookAt(flightRoot.Position, flightRoot.Position + direction)
         end
-        RunService.Heartbeat:Wait()
     end
 
-    velocity:Destroy()
-    orient:Destroy()
-    attachment:Destroy()
-    return arrived and State.Running and State.FlightToken == myToken
+    safeDestroy(velocity)
+    safeDestroy(orient)
+    safeDestroy(attachment)
+
+    return arrived and State.Alive and State.Running
+        and State.FlightToken == myToken and character() == characterModel
+        and humanoid.Health > 0
 end
 
 local function attemptPickup(obj)
@@ -572,7 +642,7 @@ local function attemptPickup(obj)
     status("Лечу к фрукту: "..fruitName(obj).."...")
     local arrived = flyToFruit(obj)
     if not arrived then
-        status("Полёт прерван или фрукт слишком далеко.")
+        if State.Running then status("Не удалось безопасно добраться до фрукта. Пропускаю цель.") end
         return
     end
 
@@ -603,7 +673,7 @@ local function attemptPickup(obj)
     end
 end
 Filter.FocusLost:Connect(function()
-    State.Filter=Filter.Text or ""; State.Fruits={}; State.LastAttempt={}; State.HasScanned=false; clearESP()
+    State.Filter=Filter.Text or ""; State.Fruits={}; State.LastAttempt={}; State.HasScanned=false; State.LastFullScan=0; clearESP()
     status(State.Filter=="" and "Filter cleared." or "Filter: "..State.Filter)
 end)
 Distance.FocusLost:Connect(function()
@@ -612,7 +682,7 @@ Distance.FocusLost:Connect(function()
 end)
 Interval.FocusLost:Connect(function()
     local n=tonumber(Interval.Text)
-    if n then CFG.ScanInterval=math.clamp(n,.5,10); Interval.Text=tostring(CFG.ScanInterval) else Interval.Text=tostring(CFG.ScanInterval) end
+    if n then CFG.ScanInterval=math.clamp(n,1,15); CFG.RescanInterval=math.max(4,CFG.ScanInterval); Interval.Text=tostring(CFG.ScanInterval) else Interval.Text=tostring(CFG.ScanInterval) end
 end)
 Start.MouseButton1Click:Connect(function()
     State.Running=true; Start.Text="● АВТОСБОР: ВКЛ"; status("Автосбор включён. Ищу фрукты...")
@@ -645,7 +715,7 @@ task.spawn(function()
     local lastScan=0
     while State.Alive and Gui.Parent do
         local now=os.clock()
-        if (State.Running or State.ESP) and not State.HasScanned then scan(); lastScan=now end
+        if (State.Running or State.ESP) and (not State.HasScanned or now-State.LastFullScan>=CFG.RescanInterval) then scan(true); lastScan=now end
         if State.Running then
             local obj,d=nearest()
             if obj then status(string.format("Найден %s • %.0f studs",fruitName(obj),d or 0)); attemptPickup(obj)
