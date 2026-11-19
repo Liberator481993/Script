@@ -158,12 +158,12 @@ Status.TextWrapped=true; Status.TextXAlignment=Enum.TextXAlignment.Left; Status.
 Instance.new("UICorner",Status).CornerRadius=UDim.new(0,8)
 local function status(s) Status.Text=s end
 local Start=button("Start","▶  ЗАПУСТИТЬ СБОР",UDim2.fromOffset(13,98),UDim2.fromOffset(134,34),Color3.fromRGB(46,125,98))
-local Stop=button("Stop","■  ОСТАНОВИТЬ",UDim2.fromOffset(153,98),UDim2.fromOffset(138,37),Color3.fromRGB(129,55,72))
+local Stop=button("Stop","■  ОСТАНОВИТЬ",UDim2.fromOffset(153,98),UDim2.fromOffset(134,34),Color3.fromRGB(129,55,72))
 local EspBtn=button("ESP","ПОДСВЕТКА: ВЫКЛ",UDim2.fromOffset(13,140),UDim2.fromOffset(134,32),Color3.fromRGB(48,57,87))
 local NotifyBtn=button("Notify","УВЕДОМЛЕНИЯ: ВКЛ",UDim2.fromOffset(153,140),UDim2.fromOffset(138,34),Color3.fromRGB(48,57,87))
-local Filter=field("FruitFilter","Фильтр по названию (пусто — все)",199,"")
-local Distance=field("MaxDistance","Дистанция сбора (studs)",238,tostring(CFG.MaxDistance))
-local Interval=field("ScanInterval","Интервал проверки, сек.",277,tostring(CFG.ScanInterval))
+local Filter=field("FruitFilter","Фильтр по названию (пусто — все)",180,"")
+local Distance=field("MaxDistance","Дистанция сбора (studs)",218,tostring(CFG.MaxDistance))
+local Interval=field("ScanInterval","Интервал проверки, сек.",256,tostring(CFG.ScanInterval))
 local Stats=Instance.new("TextLabel")
 Stats.Position=UDim2.fromOffset(13,294); Stats.Size=UDim2.new(1,-26,0,25)
 Stats.BackgroundTransparency=1; Stats.Font=Enum.Font.Gotham
