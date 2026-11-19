@@ -161,6 +161,63 @@ Min.Parent=Bar
 local Close=button("Close","×",UDim2.new(1,-32,0,10),UDim2.fromOffset(28,27),Color3.fromRGB(130,49,69))
 Close.Parent=Bar
 
+-- Live spawned-fruit mini list
+local ListPanel = Instance.new("Frame")
+ListPanel.Name = "SpawnedFruitList"
+ListPanel.Position = UDim2.fromOffset(13,382)
+ListPanel.Size = UDim2.new(1,-26,0,184)
+ListPanel.BackgroundColor3 = Color3.fromRGB(18,23,39)
+ListPanel.BorderSizePixel = 0
+ListPanel.Parent = Main
+Instance.new("UICorner",ListPanel).CornerRadius = UDim.new(0,10)
+local listStroke = Instance.new("UIStroke",ListPanel)
+listStroke.Color = Color3.fromRGB(55,72,111)
+listStroke.Transparency = .25
+local ListTitle = Instance.new("TextLabel")
+ListTitle.BackgroundTransparency = 1
+ListTitle.Position = UDim2.fromOffset(10,7)
+ListTitle.Size = UDim2.new(1,-20,0,20)
+ListTitle.Font = Enum.Font.GothamBold
+ListTitle.Text = "SPAWNED FRUITS"
+ListTitle.TextColor3 = Color3.fromRGB(224,230,255)
+ListTitle.TextSize = 11
+ListTitle.TextXAlignment = Enum.TextXAlignment.Left
+ListTitle.Parent = ListPanel
+local ListCount = Instance.new("TextLabel")
+ListCount.BackgroundTransparency = 1
+ListCount.Position = UDim2.new(1,-48,0,7)
+ListCount.Size = UDim2.fromOffset(38,20)
+ListCount.Font = Enum.Font.GothamBold
+ListCount.Text = "0"
+ListCount.TextColor3 = Color3.fromRGB(112,224,190)
+ListCount.TextSize = 11
+ListCount.TextXAlignment = Enum.TextXAlignment.Right
+ListCount.Parent = ListPanel
+local ListScroll = Instance.new("ScrollingFrame")
+ListScroll.Name = "FruitRows"
+ListScroll.Position = UDim2.fromOffset(7,32)
+ListScroll.Size = UDim2.new(1,-14,1,-39)
+ListScroll.BackgroundTransparency = 1
+ListScroll.BorderSizePixel = 0
+ListScroll.ScrollBarThickness = 3
+ListScroll.ScrollBarImageColor3 = Color3.fromRGB(105,123,190)
+ListScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ListScroll.Parent = ListPanel
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0,5)
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Parent = ListScroll
+local EmptyList = Instance.new("TextLabel")
+EmptyList.Name = "EmptyHint"
+EmptyList.Size = UDim2.new(1,-8,0,48)
+EmptyList.BackgroundTransparency = 1
+EmptyList.Font = Enum.Font.Gotham
+EmptyList.Text = "No fruits detected yet.\nTurn on ESP or Auto Farm to scan."
+EmptyList.TextColor3 = Color3.fromRGB(119,132,166)
+EmptyList.TextSize = 10
+EmptyList.TextWrapped = true
+EmptyList.Parent = ListScroll
+
 -- Touch/mouse drag support
 do
     local dragging, input, startPos, framePos
@@ -207,6 +264,77 @@ end
 local function clearESP()
     for obj in pairs(State.ESPObjects) do removeESP(obj) end
 end
+local function removeListRow(obj)
+    local row = State.ListRows[obj]
+    if row then row:Destroy(); State.ListRows[obj] = nil end
+end
+local function updateFruitList()
+    local r = root()
+    local entries = {}
+    for obj in pairs(State.Fruits) do
+        if obj and obj.Parent and obj:IsDescendantOf(Workspace) then
+            local part = fruitPart(obj)
+            if part then
+                table.insert(entries,{Object=obj,Distance=r and (part.Position-r.Position).Magnitude or math.huge})
+            else
+                removeListRow(obj)
+            end
+        else
+            removeListRow(obj)
+        end
+    end
+    table.sort(entries,function(a,b) return a.Distance < b.Distance end)
+    local present = {}
+    for index,item in ipairs(entries) do
+        local obj,distance = item.Object,item.Distance
+        present[obj] = true
+        local row = State.ListRows[obj]
+        if not row then
+            row = Instance.new("Frame")
+            row.Name = "FruitRow"
+            row.Size = UDim2.new(1,-3,0,35)
+            row.BackgroundColor3 = Color3.fromRGB(28,36,57)
+            row.BorderSizePixel = 0
+            row.Parent = ListScroll
+            Instance.new("UICorner",row).CornerRadius = UDim.new(0,7)
+            local dot = Instance.new("Frame")
+            dot.Name = "Dot"; dot.Position = UDim2.fromOffset(8,13)
+            dot.Size = UDim2.fromOffset(8,8)
+            dot.BackgroundColor3 = Color3.fromRGB(104,229,184)
+            dot.BorderSizePixel = 0; dot.Parent = row
+            Instance.new("UICorner",dot).CornerRadius = UDim.new(1,0)
+            local name = Instance.new("TextLabel")
+            name.Name = "FruitName"; name.Position = UDim2.fromOffset(23,3)
+            name.Size = UDim2.new(1,-100,0,15); name.BackgroundTransparency = 1
+            name.Font = Enum.Font.GothamBold; name.TextColor3 = Color3.fromRGB(230,235,255)
+            name.TextSize = 10; name.TextXAlignment = Enum.TextXAlignment.Left
+            name.TextTruncate = Enum.TextTruncate.AtEnd; name.Parent = row
+            local sub = Instance.new("TextLabel")
+            sub.Name = "FruitState"; sub.Position = UDim2.fromOffset(23,18)
+            sub.Size = UDim2.new(1,-100,0,12); sub.BackgroundTransparency = 1
+            sub.Font = Enum.Font.Gotham; sub.TextColor3 = Color3.fromRGB(119,218,184)
+            sub.TextSize = 8; sub.TextXAlignment = Enum.TextXAlignment.Left; sub.Parent = row
+            local dist = Instance.new("TextLabel")
+            dist.Name = "Distance"; dist.AnchorPoint = Vector2.new(1,0)
+            dist.Position = UDim2.new(1,-8,0,10); dist.Size = UDim2.fromOffset(68,15)
+            dist.BackgroundTransparency = 1; dist.Font = Enum.Font.GothamBold
+            dist.TextColor3 = Color3.fromRGB(164,180,220); dist.TextSize = 9
+            dist.TextXAlignment = Enum.TextXAlignment.Right; dist.Parent = row
+            State.ListRows[obj] = row
+        end
+        row.LayoutOrder = index
+        row.FruitName.Text = "🍈  "..fruitName(obj)
+        row.Distance.Text = distance == math.huge and "--" or (tostring(math.floor(distance)).." studs")
+        local waiting = State.LastAttempt[obj] and os.clock()-State.LastAttempt[obj] < CFG.Cooldown
+        row.FruitState.Text = waiting and "FOUND • CHECKING" or "AVAILABLE TO COLLECT"
+        row.Dot.BackgroundColor3 = waiting and Color3.fromRGB(255,190,95) or Color3.fromRGB(104,229,184)
+    end
+    for obj in pairs(State.ListRows) do
+        if not present[obj] then removeListRow(obj) end
+    end
+    ListCount.Text = tostring(#entries)
+    EmptyList.Visible = #entries == 0
+end
 local function scan()
     local found={}
     for _,obj in ipairs(Workspace:GetDescendants()) do
@@ -227,6 +355,7 @@ local function scan()
             State.Fruits[obj]=nil; State.LastAttempt[obj]=nil; removeESP(obj)
         end
     end
+    updateFruitList()
     return found
 end
 local function nearest()
@@ -332,7 +461,8 @@ task.spawn(function()
         local count=0
         for obj in pairs(State.Fruits) do if obj and obj.Parent and obj:IsDescendantOf(Workspace) then count=count+1 end end
         Stats.Text=string.format("Found: %d | Attempts: %d | Pickups: %d",count,State.Attempts,State.Pickups)
-        task.wait(.25)
+        updateFruitList()
+        task.wait(.5)
     end
     clearESP()
 end)
