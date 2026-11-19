@@ -1,5 +1,5 @@
 --[[
-Blox Fruits Auto Fruit Collector v1.1.0
+Blox Fruits Auto Fruit Collector v1.2.0
 Delta Android / Arceus X
 Client-side helper: scans Workspace for spawned fruit models, ESP, notifications,
 and makes a best-effort touch pickup attempt. Server pickup is not guaranteed.
@@ -9,9 +9,9 @@ local Workspace = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local CFG = { ScanInterval = 2, MaxDistance = 5000, Cooldown = 10, PickupWait = 0.85, TeleportHeight = 2.5 }
+local CFG = { ScanInterval = 2, MaxDistance = 5000, Cooldown = 10, PickupWait = 0.85, FlightSpeed = 95, ArrivalDistance = 7, FlightTimeout = 30 }
 local State = {
-    Running = false, ESP = false, Notify = true, Filter = "", HasScanned = false,
+    Running = false, ESP = false, Notify = true, Filter = "", HasScanned = false, FlightToken = 0,
     Fruits = {}, LastAttempt = {}, ESPObjects = {}, ListRows = {}, Attempts = 0, Pickups = 0, Alive = true
 }
 local function safeDestroy(x) if x then pcall(function() x:Destroy() end) end end
@@ -91,8 +91,8 @@ Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.DisplayOrder = 999
 local Main = Instance.new("Frame")
-Main.Size = UDim2.fromOffset(300,520)
-Main.Position = UDim2.new(.5,-150,.5,-260)
+Main.Size = UDim2.fromOffset(280,440)
+Main.Position = UDim2.new(.5,-140,.5,-220)
 Main.BackgroundColor3 = Color3.fromRGB(13,16,27)
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -101,181 +101,224 @@ Instance.new("UICorner",Main).CornerRadius = UDim.new(0,14)
 local stroke = Instance.new("UIStroke",Main)
 stroke.Color = Color3.fromRGB(91,103,255)
 stroke.Thickness = 1.4
+
+local UIS = game:GetService("UserInputService")
 local Bar = Instance.new("Frame")
-Bar.Size = UDim2.new(1,0,0,48)
+Bar.Size = UDim2.new(1,0,0,42)
 Bar.BackgroundColor3 = Color3.fromRGB(24,29,48)
 Bar.BorderSizePixel = 0
 Bar.Active = true
 Bar.Parent = Main
 Instance.new("UICorner",Bar).CornerRadius = UDim.new(0,14)
+
 local Title = Instance.new("TextLabel")
 Title.BackgroundTransparency = 1
-Title.Position = UDim2.fromOffset(14,5)
-Title.Size = UDim2.new(1,-88,0,22)
+Title.Position = UDim2.fromOffset(11,3)
+Title.Size = UDim2.new(1,-82,0,20)
 Title.Font = Enum.Font.GothamBold
 Title.Text = "СБОРЩИК ФРУКТОВ"
 Title.TextColor3 = Color3.fromRGB(239,241,255)
-Title.TextSize = 15
+Title.TextSize = 13
 Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.ZIndex = 3
 Title.Parent = Bar
 local Sub = Instance.new("TextLabel")
 Sub.BackgroundTransparency = 1
-Sub.Position = UDim2.fromOffset(15,27)
-Sub.Size = UDim2.new(1,-90,0,14)
+Sub.Position = UDim2.fromOffset(12,22)
+Sub.Size = UDim2.new(1,-82,0,13)
 Sub.Font = Enum.Font.Gotham
 Sub.Text = "BLOX FRUITS  •  DELTA / ARCEUS"
 Sub.TextColor3 = Color3.fromRGB(146,157,190)
-Sub.TextSize = 9
+Sub.TextSize = 8
 Sub.TextXAlignment = Enum.TextXAlignment.Left
+Sub.ZIndex = 3
 Sub.Parent = Bar
+
 local function button(name, label, pos, size, color)
     local b = Instance.new("TextButton")
     b.Name=name; b.Text=label; b.Position=pos; b.Size=size
     b.BackgroundColor3=color; b.BorderSizePixel=0; b.AutoButtonColor=true
-    b.Font=Enum.Font.GothamBold; b.TextSize=12; b.TextColor3=Color3.new(1,1,1)
+    b.Font=Enum.Font.GothamBold; b.TextSize=10; b.TextColor3=Color3.new(1,1,1)
     b.Parent=Main
-    Instance.new("UICorner",b).CornerRadius=UDim.new(0,9)
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
     return b
 end
 local function field(name, placeholder, y, value)
     local f=Instance.new("TextBox")
-    f.Name=name; f.Position=UDim2.fromOffset(13,y); f.Size=UDim2.new(1,-26,0,31)
+    f.Name=name; f.Position=UDim2.fromOffset(11,y); f.Size=UDim2.new(1,-22,0,29)
     f.BackgroundColor3=Color3.fromRGB(24,30,48); f.BorderSizePixel=0
-    f.ClearTextOnFocus=false; f.Font=Enum.Font.Gotham; f.TextSize=11
+    f.ClearTextOnFocus=false; f.Font=Enum.Font.Gotham; f.TextSize=10
     f.PlaceholderText=placeholder; f.PlaceholderColor3=Color3.fromRGB(118,130,160)
     f.Text=value or ""; f.TextColor3=Color3.fromRGB(225,231,250)
     f.TextXAlignment=Enum.TextXAlignment.Left; f.Parent=Main
     Instance.new("UICorner",f).CornerRadius=UDim.new(0,8)
-    local pad=Instance.new("UIPadding",f); pad.PaddingLeft=UDim.new(0,10)
+    local pad=Instance.new("UIPadding",f); pad.PaddingLeft=UDim.new(0,9)
     return f
 end
 local Status=Instance.new("TextLabel")
-Status.Position=UDim2.fromOffset(13,58); Status.Size=UDim2.new(1,-26,0,38)
+Status.Position=UDim2.fromOffset(11,49); Status.Size=UDim2.new(1,-22,0,39)
 Status.BackgroundColor3=Color3.fromRGB(22,28,44); Status.BorderSizePixel=0
 Status.Font=Enum.Font.Gotham; Status.Text="Готово. Нажми «СТАРТ» для поиска."
-Status.TextColor3=Color3.fromRGB(190,203,235); Status.TextSize=11
+Status.TextColor3=Color3.fromRGB(190,203,235); Status.TextSize=10
 Status.TextWrapped=true; Status.TextXAlignment=Enum.TextXAlignment.Left; Status.Parent=Main
-Instance.new("UICorner",Status).CornerRadius=UDim.new(0,8)
+Instance.new("UICorner",Status).CornerRadius = UDim.new(0,8)
 local function status(s) Status.Text=s end
-local Start=button("Start","▶  ЗАПУСТИТЬ СБОР",UDim2.fromOffset(13,98),UDim2.fromOffset(134,34),Color3.fromRGB(46,125,98))
-local Stop=button("Stop","■  ОСТАНОВИТЬ",UDim2.fromOffset(153,98),UDim2.fromOffset(134,34),Color3.fromRGB(129,55,72))
-local EspBtn=button("ESP","ПОДСВЕТКА: ВЫКЛ",UDim2.fromOffset(13,140),UDim2.fromOffset(134,32),Color3.fromRGB(48,57,87))
-local NotifyBtn=button("Notify","УВЕДОМЛЕНИЯ: ВКЛ",UDim2.fromOffset(153,140),UDim2.fromOffset(138,34),Color3.fromRGB(48,57,87))
-local Filter=field("FruitFilter","Фильтр по названию (пусто — все)",180,"")
-local Distance=field("MaxDistance","Дистанция сбора (studs)",218,tostring(CFG.MaxDistance))
-local Interval=field("ScanInterval","Интервал проверки, сек.",256,tostring(CFG.ScanInterval))
+local Start=button("Start","▶  ЗАПУСТИТЬ",UDim2.fromOffset(11,96),UDim2.new(.5,-16,0,32),Color3.fromRGB(46,125,98))
+local Stop=button("Stop","■  СТОП",UDim2.new(.5,5,0,96),UDim2.new(.5,-16,0,32),Color3.fromRGB(129,55,72))
+local EspBtn=button("ESP","ПОДСВЕТКА: ВЫКЛ",UDim2.fromOffset(11,135),UDim2.new(.5,-16,0,30),Color3.fromRGB(48,57,87))
+local NotifyBtn=button("Notify","ЗВУК/УВЕД.: ВКЛ",UDim2.new(.5,5,0,135),UDim2.new(.5,-16,0,30),Color3.fromRGB(48,57,87))
+local Filter=field("FruitFilter","Фильтр по названию (пусто — все)",173,"")
+local Distance=field("MaxDistance","Дистанция сбора (studs)",208,tostring(CFG.MaxDistance))
+local Interval=field("ScanInterval","Интервал проверки, сек.",243,tostring(CFG.ScanInterval))
 local Stats=Instance.new("TextLabel")
-Stats.Position=UDim2.fromOffset(13,294); Stats.Size=UDim2.new(1,-26,0,25)
+Stats.Position=UDim2.fromOffset(11,277); Stats.Size=UDim2.new(1,-22,0,19)
 Stats.BackgroundTransparency=1; Stats.Font=Enum.Font.Gotham
 Stats.Text="Найдено: 0 | Попыток: 0 | Собрано: 0"
-Stats.TextColor3=Color3.fromRGB(153,167,203); Stats.TextSize=10
+Stats.TextColor3=Color3.fromRGB(153,167,203); Stats.TextSize=9
 Stats.TextXAlignment=Enum.TextXAlignment.Left; Stats.Parent=Main
 local Footer=Instance.new("TextLabel")
-Footer.Position=UDim2.fromOffset(13,320); Footer.Size=UDim2.new(1,-26,0,25)
+Footer.Position=UDim2.fromOffset(11,296); Footer.Size=UDim2.new(1,-22,0,18)
 Footer.BackgroundTransparency=1; Footer.Font=Enum.Font.Gotham
-Footer.Text="Сбор зависит от подтверждения сервером игры"
-Footer.TextColor3=Color3.fromRGB(105,119,151); Footer.TextSize=9
+Footer.Text="Перемещение: плавный полёт"
+Footer.TextColor3=Color3.fromRGB(105,119,151); Footer.TextSize=8
 Footer.TextXAlignment=Enum.TextXAlignment.Left; Footer.Parent=Main
-local Min=button("Minimize","—",UDim2.new(1,-66,0,10),UDim2.fromOffset(28,27),Color3.fromRGB(48,56,85))
-Min.Parent=Bar
-local Close=button("Close","×",UDim2.new(1,-32,0,10),UDim2.fromOffset(28,27),Color3.fromRGB(130,49,69))
-Close.Parent=Bar
+local Min=button("Minimize","—",UDim2.new(1,-61,0,8),UDim2.fromOffset(23,25),Color3.fromRGB(48,56,85))
+Min.Parent=Bar; Min.ZIndex=5
+local Close=button("Close","×",UDim2.new(1,-32,0,8),UDim2.fromOffset(23,25),Color3.fromRGB(130,49,69))
+Close.Parent=Bar; Close.ZIndex=5
 
--- Live spawned-fruit mini list
 local ListPanel = Instance.new("Frame")
 ListPanel.Name = "SpawnedFruitList"
-ListPanel.Position = UDim2.fromOffset(13,350)
-ListPanel.Size = UDim2.new(1,-26,0,157)
+ListPanel.Position = UDim2.fromOffset(11,322)
+ListPanel.Size = UDim2.new(1,-22,0,107)
 ListPanel.BackgroundColor3 = Color3.fromRGB(18,23,39)
 ListPanel.BorderSizePixel = 0
 ListPanel.Parent = Main
-Instance.new("UICorner",ListPanel).CornerRadius = UDim.new(0,10)
+Instance.new("UICorner",ListPanel).CornerRadius = UDim.new(0,9)
 local listStroke = Instance.new("UIStroke",ListPanel)
 listStroke.Color = Color3.fromRGB(55,72,111)
 listStroke.Transparency = .25
 local ListTitle = Instance.new("TextLabel")
 ListTitle.BackgroundTransparency = 1
-ListTitle.Position = UDim2.fromOffset(10,7)
-ListTitle.Size = UDim2.new(1,-20,0,20)
+ListTitle.Position = UDim2.fromOffset(9,5)
+ListTitle.Size = UDim2.new(1,-18,0,18)
 ListTitle.Font = Enum.Font.GothamBold
 ListTitle.Text = "НАЙДЕННЫЕ ФРУКТЫ"
 ListTitle.TextColor3 = Color3.fromRGB(224,230,255)
-ListTitle.TextSize = 11
+ListTitle.TextSize = 10
 ListTitle.TextXAlignment = Enum.TextXAlignment.Left
 ListTitle.Parent = ListPanel
 local ListCount = Instance.new("TextLabel")
 ListCount.BackgroundTransparency = 1
-ListCount.Position = UDim2.new(1,-48,0,7)
-ListCount.Size = UDim2.fromOffset(38,20)
+ListCount.Position = UDim2.new(1,-38,0,5)
+ListCount.Size = UDim2.fromOffset(28,18)
 ListCount.Font = Enum.Font.GothamBold
 ListCount.Text = "0"
 ListCount.TextColor3 = Color3.fromRGB(112,224,190)
-ListCount.TextSize = 11
+ListCount.TextSize = 10
 ListCount.TextXAlignment = Enum.TextXAlignment.Right
 ListCount.Parent = ListPanel
 local ListScroll = Instance.new("ScrollingFrame")
 ListScroll.Name = "FruitRows"
-ListScroll.Position = UDim2.fromOffset(7,32)
-ListScroll.Size = UDim2.new(1,-14,1,-39)
+ListScroll.Position = UDim2.fromOffset(6,26)
+ListScroll.Size = UDim2.new(1,-12,1,-31)
 ListScroll.BackgroundTransparency = 1
 ListScroll.BorderSizePixel = 0
-ListScroll.ScrollBarThickness = 3
+ListScroll.ScrollBarThickness = 2
 ListScroll.ScrollBarImageColor3 = Color3.fromRGB(105,123,190)
 ListScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 ListScroll.Parent = ListPanel
 local ListLayout = Instance.new("UIListLayout")
-ListLayout.Padding = UDim.new(0,5)
+ListLayout.Padding = UDim.new(0,4)
 ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ListLayout.Parent = ListScroll
 local EmptyList = Instance.new("TextLabel")
 EmptyList.Name = "EmptyHint"
-EmptyList.Size = UDim2.new(1,-8,0,48)
+EmptyList.Size = UDim2.new(1,-8,0,38)
 EmptyList.BackgroundTransparency = 1
 EmptyList.Font = Enum.Font.Gotham
-EmptyList.Text = "Фрукты пока не найдены.\nВключи подсветку или автосбор для поиска."
+EmptyList.Text = "Фрукты пока не найдены."
 EmptyList.TextColor3 = Color3.fromRGB(119,132,166)
-EmptyList.TextSize = 10
+EmptyList.TextSize = 9
 EmptyList.TextWrapped = true
 EmptyList.Parent = ListScroll
 
--- Reliable mouse + touch dragging from the title bar.
-do
-    local UIS = game:GetService("UserInputService")
-    local dragging = false
-    local dragInput = nil
-    local dragStart = nil
-    local startPosition = nil
-
-    Bar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragInput = input
-            dragStart = input.Position
-            startPosition = Main.Position
-        end
-    end)
-
-    UIS.InputChanged:Connect(function(input)
-        if not dragging then return end
-        local isMouseMove = input.UserInputType == Enum.UserInputType.MouseMovement
-        local isTouchMove = input.UserInputType == Enum.UserInputType.Touch
-        if isMouseMove or (isTouchMove and dragInput and input == dragInput) then
-            local delta = input.Position - dragStart
-            Main.Position = UDim2.new(
-                startPosition.X.Scale, startPosition.X.Offset + delta.X,
-                startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
+-- Keep the entire panel inside the visible screen area.
+local function clampMain()
+    local camera = Workspace.CurrentCamera
+    if not camera then return end
+    local viewport = camera.ViewportSize
+    local width = Main.AbsoluteSize.X
+    local height = Main.AbsoluteSize.Y
+    local x = math.clamp(Main.AbsolutePosition.X, 0, math.max(0, viewport.X - width))
+    local y = math.clamp(Main.AbsolutePosition.Y, 0, math.max(0, viewport.Y - height))
+    Main.Position = UDim2.fromOffset(x,y)
+end
+local function fitMainToScreen()
+    local camera = Workspace.CurrentCamera
+    if not camera then return end
+    local viewport = camera.ViewportSize
+    local scale = math.min(1, (viewport.X - 16) / 280, (viewport.Y - 16) / 440)
+    scale = math.max(0.55, scale)
+    local uiScale = Main:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")
+    uiScale.Scale = scale
+    uiScale.Parent = Main
+    task.defer(function()
+        if Main.Parent then
+            Main.Position = UDim2.fromOffset(
+                math.max(0,(viewport.X-Main.AbsoluteSize.X)/2),
+                math.max(0,(viewport.Y-Main.AbsoluteSize.Y)/2)
             )
         end
     end)
-
-    UIS.InputEnded:Connect(function(input)
-        if input == dragInput or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-            dragInput = nil
-        end
-    end)
 end
+fitMainToScreen()
+if Workspace.CurrentCamera then
+    Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitMainToScreen)
+end
+
+-- Dedicated drag handle avoids fighting the minimize/close buttons.
+local DragHandle = Instance.new("TextButton")
+DragHandle.Name = "DragHandle"
+DragHandle.Text = ""
+DragHandle.BackgroundTransparency = 1
+DragHandle.BorderSizePixel = 0
+DragHandle.Position = UDim2.fromOffset(0,0)
+DragHandle.Size = UDim2.new(1,-68,1,0)
+DragHandle.Active = true
+DragHandle.ZIndex = 2
+DragHandle.Parent = Bar
+local dragging, dragInput, dragStart, startPosition = false, nil, nil, nil
+DragHandle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragInput = input
+        dragStart = input.Position
+        startPosition = Main.Position
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        local delta = input.Position - dragStart
+        local camera = Workspace.CurrentCamera
+        if not camera then return end
+        local viewport = camera.ViewportSize
+        local scale = Main:FindFirstChildOfClass("UIScale")
+        local w = Main.AbsoluteSize.X
+        local h = Main.AbsoluteSize.Y
+        local x = math.clamp(startPosition.X.Offset + delta.X, 0, math.max(0,viewport.X-w))
+        local y = math.clamp(startPosition.Y.Offset + delta.Y, 0, math.max(0,viewport.Y-h))
+        Main.Position = UDim2.fromOffset(x,y)
+    end
+end)
+UIS.InputEnded:Connect(function(input)
+    if input == dragInput or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+        dragInput = nil
+    end
+end)
+
 local function removeESP(obj)
     local e=State.ESPObjects[obj]
     if e then
@@ -439,28 +482,100 @@ local function nearest()
     end
     return target,dist
 end
+local function flyToFruit(obj)
+    local characterModel = character()
+    local humanoid = characterModel and characterModel:FindFirstChildOfClass("Humanoid")
+    local r = root()
+    local part = obj and fruitPart(obj)
+    if not r or not part or not humanoid then return false end
+
+    State.FlightToken = State.FlightToken + 1
+    local myToken = State.FlightToken
+    local attachment = Instance.new("Attachment")
+    attachment.Name = "FruitFlightAttachment"
+    attachment.Parent = r
+
+    local velocity = Instance.new("LinearVelocity")
+    velocity.Name = "FruitFlightVelocity"
+    velocity.Attachment0 = attachment
+    velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+    velocity.MaxForce = math.huge
+    velocity.VectorVelocity = Vector3.zero
+    velocity.Parent = r
+
+    local orient = Instance.new("AlignOrientation")
+    orient.Name = "FruitFlightOrientation"
+    orient.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    orient.Attachment0 = attachment
+    orient.MaxTorque = math.huge
+    orient.Responsiveness = 18
+    orient.Parent = r
+
+    local started = os.clock()
+    local arrived = false
+    humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+
+    while State.Alive and State.Running and State.FlightToken == myToken
+        and os.clock() - started < CFG.FlightTimeout do
+        if not obj or not obj.Parent or not obj:IsDescendantOf(Workspace) then break end
+        r = root()
+        part = fruitPart(obj)
+        if not r or not part then break end
+        local offset = part.Position - r.Position
+        local distance = offset.Magnitude
+        if distance <= CFG.ArrivalDistance then
+            arrived = true
+            break
+        end
+        local direction = offset.Unit
+        velocity.VectorVelocity = direction * math.min(CFG.FlightSpeed, math.max(24,distance*1.5))
+        orient.CFrame = CFrame.lookAt(r.Position, r.Position + direction)
+        game:GetService("RunService").Heartbeat:Wait()
+    end
+
+    velocity:Destroy()
+    orient:Destroy()
+    attachment:Destroy()
+    return arrived and State.Running and State.FlightToken == myToken
+end
+
 local function attemptPickup(obj)
-    local r=root(); local p=obj and fruitPart(obj)
+    local r=root()
+    local p=obj and fruitPart(obj)
     if not r or not p then return end
-    State.LastAttempt[obj]=os.clock(); State.Attempts=State.Attempts+1
-    local pos=p.Position+Vector3.new(0,CFG.TeleportHeight,0)
-    local ok=pcall(function()
-        r.CFrame=CFrame.new(pos)
-        r.AssemblyLinearVelocity=Vector3.zero
-        r.AssemblyAngularVelocity=Vector3.zero
+    State.LastAttempt[obj]=os.clock()
+    State.Attempts=State.Attempts+1
+    status("Лечу к фрукту: "..fruitName(obj).."...")
+    local arrived = flyToFruit(obj)
+    if not arrived then
+        status("Полёт прерван или фрукт слишком далеко.")
+        return
+    end
+
+    r = root()
+    p = fruitPart(obj)
+    if not r or not p then return end
+    local touch = nil
+    pcall(function()
+        local env = (type(getgenv) == "function" and getgenv()) or _G
+        touch = rawget(env,"firetouchinterest")
     end)
-    if not ok then status("Teleport failed; check character state."); return end
-    status("Подбираю фрукт: "..fruitName(obj).."...")
-    local touch=rawget(getgenv and getgenv() or _G,"firetouchinterest")
-    if type(touch)=="function" then
-        pcall(function() touch(r,p,0); task.wait(.12); touch(r,p,1) end)
+    if type(touch) == "function" then
+        pcall(function()
+            touch(r,p,0)
+            task.wait(.12)
+            touch(r,p,1)
+        end)
     end
     task.wait(CFG.PickupWait)
     if not obj.Parent or not obj:IsDescendantOf(Workspace) then
-        State.Pickups=State.Pickups+1; State.Fruits[obj]=nil; removeESP(obj)
-        status("Собран фрукт: "..fruitName(obj)); notify("ФРУКТ СОБРАН",fruitName(obj))
+        State.Pickups=State.Pickups+1
+        State.Fruits[obj]=nil
+        removeESP(obj)
+        status("Собран фрукт: "..fruitName(obj))
+        notify("ФРУКТ СОБРАН",fruitName(obj))
     else
-        status("Сервер не подтвердил сбор: "..fruitName(obj))
+        status("Подлетел, но сервер не подтвердил сбор: "..fruitName(obj))
     end
 end
 Filter.FocusLost:Connect(function()
@@ -479,7 +594,7 @@ Start.MouseButton1Click:Connect(function()
     State.Running=true; Start.Text="● АВТОСБОР: ВКЛ"; status("Автосбор включён. Ищу фрукты...")
 end)
 Stop.MouseButton1Click:Connect(function()
-    State.Running=false; Start.Text="▶ ЗАПУСТИТЬ СБОР"; status("Автосбор остановлен.")
+    State.Running=false; State.FlightToken=State.FlightToken+1; Start.Text="▶ ЗАПУСТИТЬ СБОР"; status("Автосбор остановлен.")
 end)
 EspBtn.MouseButton1Click:Connect(function()
     State.ESP=not State.ESP; EspBtn.Text=State.ESP and "ПОДСВЕТКА: ВКЛ" or "ПОДСВЕТКА: ВЫКЛ"
@@ -494,11 +609,11 @@ Min.MouseButton1Click:Connect(function()
     for _,v in ipairs(Main:GetChildren()) do
         if v~=Bar and not v:IsA("UICorner") and not v:IsA("UIStroke") then v.Visible=not minimized end
     end
-    Main.Size=minimized and UDim2.fromOffset(300,48) or UDim2.fromOffset(300,520)
+    Main.Size=minimized and UDim2.fromOffset(280,42) or UDim2.fromOffset(280,440)
     Min.Text=minimized and "+" or "—"
 end)
 Close.MouseButton1Click:Connect(function()
-    State.Alive=false; State.Running=false; clearESP(); Gui:Destroy()
+    State.Alive=false; State.Running=false; State.FlightToken=State.FlightToken+1; clearESP(); Gui:Destroy()
 end)
 Gui.Parent=guiParent()
 notify("Сборщик фруктов","Загружен. Нажми «ЗАПУСТИТЬ СБОР».")
