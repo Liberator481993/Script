@@ -91,8 +91,8 @@ Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.DisplayOrder = 999
 local Main = Instance.new("Frame")
-Main.Size = UDim2.fromOffset(340,620)
-Main.Position = UDim2.new(.5,-170,.5,-310)
+Main.Size = UDim2.fromOffset(300,520)
+Main.Position = UDim2.new(.5,-150,.5,-260)
 Main.BackgroundColor3 = Color3.fromRGB(13,16,27)
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -157,21 +157,21 @@ Status.TextColor3=Color3.fromRGB(190,203,235); Status.TextSize=11
 Status.TextWrapped=true; Status.TextXAlignment=Enum.TextXAlignment.Left; Status.Parent=Main
 Instance.new("UICorner",Status).CornerRadius=UDim.new(0,8)
 local function status(s) Status.Text=s end
-local Start=button("Start","▶  ЗАПУСТИТЬ СБОР",UDim2.fromOffset(13,107),UDim2.fromOffset(138,37),Color3.fromRGB(46,125,98))
-local Stop=button("Stop","■  ОСТАНОВИТЬ",UDim2.fromOffset(159,107),UDim2.fromOffset(138,37),Color3.fromRGB(129,55,72))
-local EspBtn=button("ESP","ПОДСВЕТКА: ВЫКЛ",UDim2.fromOffset(13,153),UDim2.fromOffset(138,34),Color3.fromRGB(48,57,87))
-local NotifyBtn=button("Notify","УВЕДОМЛЕНИЯ: ВКЛ",UDim2.fromOffset(159,153),UDim2.fromOffset(138,34),Color3.fromRGB(48,57,87))
+local Start=button("Start","▶  ЗАПУСТИТЬ СБОР",UDim2.fromOffset(13,98),UDim2.fromOffset(134,34),Color3.fromRGB(46,125,98))
+local Stop=button("Stop","■  ОСТАНОВИТЬ",UDim2.fromOffset(153,98),UDim2.fromOffset(138,37),Color3.fromRGB(129,55,72))
+local EspBtn=button("ESP","ПОДСВЕТКА: ВЫКЛ",UDim2.fromOffset(13,140),UDim2.fromOffset(134,32),Color3.fromRGB(48,57,87))
+local NotifyBtn=button("Notify","УВЕДОМЛЕНИЯ: ВКЛ",UDim2.fromOffset(153,140),UDim2.fromOffset(138,34),Color3.fromRGB(48,57,87))
 local Filter=field("FruitFilter","Фильтр по названию (пусто — все)",199,"")
 local Distance=field("MaxDistance","Дистанция сбора (studs)",238,tostring(CFG.MaxDistance))
 local Interval=field("ScanInterval","Интервал проверки, сек.",277,tostring(CFG.ScanInterval))
 local Stats=Instance.new("TextLabel")
-Stats.Position=UDim2.fromOffset(13,316); Stats.Size=UDim2.new(1,-26,0,25)
+Stats.Position=UDim2.fromOffset(13,294); Stats.Size=UDim2.new(1,-26,0,25)
 Stats.BackgroundTransparency=1; Stats.Font=Enum.Font.Gotham
 Stats.Text="Найдено: 0 | Попыток: 0 | Собрано: 0"
 Stats.TextColor3=Color3.fromRGB(153,167,203); Stats.TextSize=10
 Stats.TextXAlignment=Enum.TextXAlignment.Left; Stats.Parent=Main
 local Footer=Instance.new("TextLabel")
-Footer.Position=UDim2.fromOffset(13,348); Footer.Size=UDim2.new(1,-26,0,25)
+Footer.Position=UDim2.fromOffset(13,320); Footer.Size=UDim2.new(1,-26,0,25)
 Footer.BackgroundTransparency=1; Footer.Font=Enum.Font.Gotham
 Footer.Text="Сбор зависит от подтверждения сервером игры"
 Footer.TextColor3=Color3.fromRGB(105,119,151); Footer.TextSize=9
@@ -184,8 +184,8 @@ Close.Parent=Bar
 -- Live spawned-fruit mini list
 local ListPanel = Instance.new("Frame")
 ListPanel.Name = "SpawnedFruitList"
-ListPanel.Position = UDim2.fromOffset(13,382)
-ListPanel.Size = UDim2.new(1,-26,0,184)
+ListPanel.Position = UDim2.fromOffset(13,350)
+ListPanel.Size = UDim2.new(1,-26,0,157)
 ListPanel.BackgroundColor3 = Color3.fromRGB(18,23,39)
 ListPanel.BorderSizePixel = 0
 ListPanel.Parent = Main
@@ -238,19 +238,41 @@ EmptyList.TextSize = 10
 EmptyList.TextWrapped = true
 EmptyList.Parent = ListScroll
 
--- Touch/mouse drag support
+-- Reliable mouse + touch dragging from the title bar.
 do
-    local dragging, input, startPos, framePos
-    Bar.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-            dragging=true; input=i; startPos=i.Position; framePos=Main.Position
-            i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dragging=false end end)
+    local UIS = game:GetService("UserInputService")
+    local dragging = false
+    local dragInput = nil
+    local dragStart = nil
+    local startPosition = nil
+
+    Bar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragInput = input
+            dragStart = input.Position
+            startPosition = Main.Position
         end
     end)
-    game:GetService("UserInputService").InputChanged:Connect(function(i)
-        if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-            local d=i.Position-startPos
-            Main.Position=UDim2.new(framePos.X.Scale,framePos.X.Offset+d.X,framePos.Y.Scale,framePos.Y.Offset+d.Y)
+
+    UIS.InputChanged:Connect(function(input)
+        if not dragging then return end
+        local isMouseMove = input.UserInputType == Enum.UserInputType.MouseMovement
+        local isTouchMove = input.UserInputType == Enum.UserInputType.Touch
+        if isMouseMove or (isTouchMove and dragInput and input == dragInput) then
+            local delta = input.Position - dragStart
+            Main.Position = UDim2.new(
+                startPosition.X.Scale, startPosition.X.Offset + delta.X,
+                startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(input)
+        if input == dragInput or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+            dragInput = nil
         end
     end)
 end
@@ -472,7 +494,7 @@ Min.MouseButton1Click:Connect(function()
     for _,v in ipairs(Main:GetChildren()) do
         if v~=Bar and not v:IsA("UICorner") and not v:IsA("UIStroke") then v.Visible=not minimized end
     end
-    Main.Size=minimized and UDim2.fromOffset(340,48) or UDim2.fromOffset(340,620)
+    Main.Size=minimized and UDim2.fromOffset(300,48) or UDim2.fromOffset(300,520)
     Min.Text=minimized and "+" or "—"
 end)
 Close.MouseButton1Click:Connect(function()
