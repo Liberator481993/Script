@@ -1,5 +1,5 @@
 --[[
-Blox Fruits Auto Fruit Collector v1.2.0
+Blox Fruits Auto Fruit Collector v1.2.1
 Delta Android / Arceus X
 Client-side helper: scans Workspace for spawned fruit models, ESP, notifications,
 and makes a best-effort touch pickup attempt. Server pickup is not guaranteed.
@@ -513,6 +513,12 @@ local function flyToFruit(obj)
 
     local started = os.clock()
     local arrived = false
+    local RunService = game:GetService("RunService")
+    -- Cruise above both the player's starting point and the fruit. Do not aim
+    -- directly at a low target while crossing the sea.
+    local cruiseY = math.max(r.Position.Y, part.Position.Y) + 140
+    local landingOffset = Vector3.new(0, 8, 0)
+    local descending = false
     humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 
     while State.Alive and State.Running and State.FlightToken == myToken
@@ -521,16 +527,34 @@ local function flyToFruit(obj)
         r = root()
         part = fruitPart(obj)
         if not r or not part then break end
-        local offset = part.Position - r.Position
+
+        local targetPosition
+        local horizontal = Vector3.new(part.Position.X - r.Position.X, 0, part.Position.Z - r.Position.Z)
+        if not descending and horizontal.Magnitude <= 12 then
+            descending = true
+        end
+
+        if descending then
+            -- Only descend once directly above the fruit.
+            targetPosition = part.Position + landingOffset
+        else
+            targetPosition = Vector3.new(part.Position.X, cruiseY, part.Position.Z)
+        end
+
+        local offset = targetPosition - r.Position
         local distance = offset.Magnitude
-        if distance <= CFG.ArrivalDistance then
+        if descending and distance <= CFG.ArrivalDistance then
             arrived = true
             break
         end
-        local direction = offset.Unit
-        velocity.VectorVelocity = direction * math.min(CFG.FlightSpeed, math.max(24,distance*1.5))
-        orient.CFrame = CFrame.lookAt(r.Position, r.Position + direction)
-        game:GetService("RunService").Heartbeat:Wait()
+
+        local direction = distance > 0.01 and offset.Unit or Vector3.zero
+        local speed = math.min(CFG.FlightSpeed, math.max(18, distance * 1.25))
+        velocity.VectorVelocity = direction * speed
+        if direction.Magnitude > 0 then
+            orient.CFrame = CFrame.lookAt(r.Position, r.Position + direction)
+        end
+        RunService.Heartbeat:Wait()
     end
 
     velocity:Destroy()
