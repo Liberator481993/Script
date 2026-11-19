@@ -12,7 +12,7 @@ local LocalPlayer = Players.LocalPlayer
 local CFG = { ScanInterval = 1.25, MaxDistance = 250000, Cooldown = 10, PickupWait = 0.85, TeleportHeight = 2.5 }
 local State = {
     Running = false, ESP = false, Notify = true, Filter = "",
-    Fruits = {}, LastAttempt = {}, ESPObjects = {}, Attempts = 0, Pickups = 0, Alive = true
+    Fruits = {}, LastAttempt = {}, ESPObjects = {}, ListRows = {}, Attempts = 0, Pickups = 0, Alive = true
 }
 local function safeDestroy(x) if x then pcall(function() x:Destroy() end) end end
 local function character() return LocalPlayer.Character end
@@ -71,7 +71,7 @@ Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.DisplayOrder = 999
 local Main = Instance.new("Frame")
-Main.Size = UDim2.fromOffset(310,390)
+Main.Size = UDim2.fromOffset(310,580)
 Main.Position = UDim2.new(.5,-155,.5,-195)
 Main.BackgroundColor3 = Color3.fromRGB(13,16,27)
 Main.BorderSizePixel = 0
@@ -300,7 +300,7 @@ Min.MouseButton1Click:Connect(function()
     for _,v in ipairs(Main:GetChildren()) do
         if v~=Bar and not v:IsA("UICorner") and not v:IsA("UIStroke") then v.Visible=not minimized end
     end
-    Main.Size=minimized and UDim2.fromOffset(310,48) or UDim2.fromOffset(310,390)
+    Main.Size=minimized and UDim2.fromOffset(310,48) or UDim2.fromOffset(310,580)
     Min.Text=minimized and "+" or "—"
 end)
 Close.MouseButton1Click:Connect(function()
