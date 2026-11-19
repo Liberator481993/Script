@@ -440,6 +440,11 @@ end
 local function scan(force)
     local now = os.clock()
     if not force and State.HasScanned and now - State.LastFullScan < CFG.RescanInterval then
+        if State.ESP then
+            for obj in pairs(State.Fruits) do
+                if obj and obj.Parent then addESP(obj) end
+            end
+        end
         updateFruitList()
         return State.Fruits
     end
