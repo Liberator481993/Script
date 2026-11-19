@@ -1,5 +1,5 @@
 --[[
-Blox Fruits Auto Fruit Collector v1.0.1
+Blox Fruits Auto Fruit Collector v1.1.0
 Delta Android / Arceus X
 Client-side helper: scans Workspace for spawned fruit models, ESP, notifications,
 and makes a best-effort touch pickup attempt. Server pickup is not guaranteed.
@@ -9,9 +9,9 @@ local Workspace = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local CFG = { ScanInterval = 1.25, MaxDistance = 250000, Cooldown = 10, PickupWait = 0.85, TeleportHeight = 2.5 }
+local CFG = { ScanInterval = 2, MaxDistance = 5000, Cooldown = 10, PickupWait = 0.85, TeleportHeight = 2.5 }
 local State = {
-    Running = false, ESP = false, Notify = true, Filter = "",
+    Running = false, ESP = false, Notify = true, Filter = "", HasScanned = false,
     Fruits = {}, LastAttempt = {}, ESPObjects = {}, ListRows = {}, Attempts = 0, Pickups = 0, Alive = true
 }
 local function safeDestroy(x) if x then pcall(function() x:Destroy() end) end end
@@ -33,16 +33,36 @@ end
 local function isFruit(obj)
     if not obj or not obj.Parent or not obj:IsDescendantOf(Workspace) then return false end
     if not (obj:IsA("Model") or obj:IsA("Tool") or obj:IsA("BasePart")) then return false end
+
+    -- Reject anything belonging to an NPC, shop, dealer or interaction point.
+    local current = obj
+    while current and current ~= Workspace do
+        local name = string.lower(current.Name or "")
+        if name:find("shop",1,true) or name:find("dealer",1,true)
+            or name:find("vendor",1,true) or name:find("npc",1,true)
+            or name:find("remove blox",1,true) or name:find("sick man",1,true) then
+            return false
+        end
+        if current:IsA("Model") and current:FindFirstChildOfClass("Humanoid") then
+            return false
+        end
+        if current:IsA("ProximityPrompt") or current:IsA("ClickDetector") then return false end
+        current = current.Parent
+    end
+
     local n = string.lower(obj.Name or "")
     if n:sub(-5) ~= "fruit" then return false end
-    if n:find("dealer",1,true) or n:find("shop",1,true) or n:find("vendor",1,true) or n:find("npc",1,true) then return false end
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Character and obj:IsDescendantOf(p.Character) then return false end
     end
-    local a = obj.Parent
-    while a and a ~= Workspace do
-        if (a:IsA("Model") or a:IsA("Tool")) and string.lower(a.Name):sub(-5) == "fruit" then return false end
-        a = a.Parent
+
+    -- Avoid treating parts inside a fruit container as separate fruits.
+    local parent = obj.Parent
+    while parent and parent ~= Workspace do
+        if (parent:IsA("Model") or parent:IsA("Tool")) and string.lower(parent.Name):sub(-5) == "fruit" then
+            return false
+        end
+        parent = parent.Parent
     end
     return fruitPart(obj) ~= nil
 end
@@ -71,8 +91,8 @@ Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.DisplayOrder = 999
 local Main = Instance.new("Frame")
-Main.Size = UDim2.fromOffset(310,580)
-Main.Position = UDim2.new(.5,-155,.5,-195)
+Main.Size = UDim2.fromOffset(340,620)
+Main.Position = UDim2.new(.5,-170,.5,-310)
 Main.BackgroundColor3 = Color3.fromRGB(13,16,27)
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -93,7 +113,7 @@ Title.BackgroundTransparency = 1
 Title.Position = UDim2.fromOffset(14,5)
 Title.Size = UDim2.new(1,-88,0,22)
 Title.Font = Enum.Font.GothamBold
-Title.Text = "FRUIT COLLECTOR"
+Title.Text = "СБОРЩИК ФРУКТОВ"
 Title.TextColor3 = Color3.fromRGB(239,241,255)
 Title.TextSize = 15
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -132,28 +152,28 @@ end
 local Status=Instance.new("TextLabel")
 Status.Position=UDim2.fromOffset(13,58); Status.Size=UDim2.new(1,-26,0,38)
 Status.BackgroundColor3=Color3.fromRGB(22,28,44); Status.BorderSizePixel=0
-Status.Font=Enum.Font.Gotham; Status.Text="Ready. Press START to search."
+Status.Font=Enum.Font.Gotham; Status.Text="Готово. Нажми «СТАРТ» для поиска."
 Status.TextColor3=Color3.fromRGB(190,203,235); Status.TextSize=11
 Status.TextWrapped=true; Status.TextXAlignment=Enum.TextXAlignment.Left; Status.Parent=Main
 Instance.new("UICorner",Status).CornerRadius=UDim.new(0,8)
 local function status(s) Status.Text=s end
-local Start=button("Start","▶  START AUTO FARM",UDim2.fromOffset(13,107),UDim2.fromOffset(138,37),Color3.fromRGB(46,125,98))
-local Stop=button("Stop","■  STOP",UDim2.fromOffset(159,107),UDim2.fromOffset(138,37),Color3.fromRGB(129,55,72))
-local EspBtn=button("ESP","ESP: OFF",UDim2.fromOffset(13,153),UDim2.fromOffset(138,34),Color3.fromRGB(48,57,87))
-local NotifyBtn=button("Notify","NOTIFY: ON",UDim2.fromOffset(159,153),UDim2.fromOffset(138,34),Color3.fromRGB(48,57,87))
-local Filter=field("FruitFilter","Filter by fruit name (blank = all)",199,"")
-local Distance=field("MaxDistance","Max distance",238,tostring(CFG.MaxDistance))
-local Interval=field("ScanInterval","Scan interval seconds",277,tostring(CFG.ScanInterval))
+local Start=button("Start","▶  ЗАПУСТИТЬ СБОР",UDim2.fromOffset(13,107),UDim2.fromOffset(138,37),Color3.fromRGB(46,125,98))
+local Stop=button("Stop","■  ОСТАНОВИТЬ",UDim2.fromOffset(159,107),UDim2.fromOffset(138,37),Color3.fromRGB(129,55,72))
+local EspBtn=button("ESP","ПОДСВЕТКА: ВЫКЛ",UDim2.fromOffset(13,153),UDim2.fromOffset(138,34),Color3.fromRGB(48,57,87))
+local NotifyBtn=button("Notify","УВЕДОМЛЕНИЯ: ВКЛ",UDim2.fromOffset(159,153),UDim2.fromOffset(138,34),Color3.fromRGB(48,57,87))
+local Filter=field("FruitFilter","Фильтр по названию (пусто — все)",199,"")
+local Distance=field("MaxDistance","Дистанция сбора (studs)",238,tostring(CFG.MaxDistance))
+local Interval=field("ScanInterval","Интервал проверки, сек.",277,tostring(CFG.ScanInterval))
 local Stats=Instance.new("TextLabel")
 Stats.Position=UDim2.fromOffset(13,316); Stats.Size=UDim2.new(1,-26,0,25)
 Stats.BackgroundTransparency=1; Stats.Font=Enum.Font.Gotham
-Stats.Text="Found: 0 | Attempts: 0 | Pickups: 0"
+Stats.Text="Найдено: 0 | Попыток: 0 | Собрано: 0"
 Stats.TextColor3=Color3.fromRGB(153,167,203); Stats.TextSize=10
 Stats.TextXAlignment=Enum.TextXAlignment.Left; Stats.Parent=Main
 local Footer=Instance.new("TextLabel")
 Footer.Position=UDim2.fromOffset(13,348); Footer.Size=UDim2.new(1,-26,0,25)
 Footer.BackgroundTransparency=1; Footer.Font=Enum.Font.Gotham
-Footer.Text="Client-side pickup attempt • no guarantee"
+Footer.Text="Сбор зависит от подтверждения сервером игры"
 Footer.TextColor3=Color3.fromRGB(105,119,151); Footer.TextSize=9
 Footer.TextXAlignment=Enum.TextXAlignment.Left; Footer.Parent=Main
 local Min=button("Minimize","—",UDim2.new(1,-66,0,10),UDim2.fromOffset(28,27),Color3.fromRGB(48,56,85))
@@ -178,7 +198,7 @@ ListTitle.BackgroundTransparency = 1
 ListTitle.Position = UDim2.fromOffset(10,7)
 ListTitle.Size = UDim2.new(1,-20,0,20)
 ListTitle.Font = Enum.Font.GothamBold
-ListTitle.Text = "SPAWNED FRUITS"
+ListTitle.Text = "НАЙДЕННЫЕ ФРУКТЫ"
 ListTitle.TextColor3 = Color3.fromRGB(224,230,255)
 ListTitle.TextSize = 11
 ListTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -326,7 +346,7 @@ local function updateFruitList()
         row.FruitName.Text = "🍈  "..fruitName(obj)
         row.Distance.Text = distance == math.huge and "--" or (tostring(math.floor(distance)).." studs")
         local waiting = State.LastAttempt[obj] and os.clock()-State.LastAttempt[obj] < CFG.Cooldown
-        row.FruitState.Text = waiting and "FOUND • CHECKING" or "AVAILABLE TO COLLECT"
+        row.FruitState.Text = waiting and "НАЙДЕН • ОЖИДАНИЕ" or "ГОТОВ К СБОРУ"
         row.Dot.BackgroundColor3 = waiting and Color3.fromRGB(255,190,95) or Color3.fromRGB(104,229,184)
     end
     for obj in pairs(State.ListRows) do
@@ -336,6 +356,7 @@ local function updateFruitList()
     EmptyList.Visible = #entries == 0
 end
 local function scan()
+    if State.HasScanned then updateFruitList(); return State.Fruits end
     local found={}
     for _,obj in ipairs(Workspace:GetDescendants()) do
         if isFruit(obj) then
@@ -344,7 +365,7 @@ local function scan()
                 found[obj]=true
                 if not State.Fruits[obj] then
                     State.Fruits[obj]=true
-                    notify("FRUIT SPAWNED",fruitName(obj))
+                    notify("ПОЯВИЛСЯ ФРУКТ",fruitName(obj))
                 end
                 if State.ESP then addESP(obj) end
             end
@@ -355,9 +376,27 @@ local function scan()
             State.Fruits[obj]=nil; State.LastAttempt[obj]=nil; removeESP(obj)
         end
     end
+    State.HasScanned = true
     updateFruitList()
     return found
 end
+
+-- After the initial world scan, watch newly spawned objects instead of rescanning all Workspace.
+Workspace.DescendantAdded:Connect(function(obj)
+    task.delay(0.2, function()
+        if not State.Alive or not (State.Running or State.ESP) or not isFruit(obj) then return end
+        local n = string.lower(obj.Name)
+        if State.Filter ~= "" and not n:find(string.lower(State.Filter),1,true)
+            and not string.lower(fruitName(obj)):find(string.lower(State.Filter),1,true) then return end
+        if not State.Fruits[obj] then
+            State.Fruits[obj] = true
+            if State.ESP then addESP(obj) end
+            notify("ПОЯВИЛСЯ ФРУКТ", fruitName(obj))
+            updateFruitList()
+        end
+    end)
+end)
+
 local function nearest()
     local r=root()
     if not r then return nil end
@@ -385,7 +424,7 @@ local function attemptPickup(obj)
         r.AssemblyAngularVelocity=Vector3.zero
     end)
     if not ok then status("Teleport failed; check character state."); return end
-    status("At "..fruitName(obj).."; trying pickup...")
+    status("Подбираю фрукт: "..fruitName(obj).."...")
     local touch=rawget(getgenv and getgenv() or _G,"firetouchinterest")
     if type(touch)=="function" then
         pcall(function() touch(r,p,0); task.wait(.12); touch(r,p,1) end)
@@ -393,13 +432,13 @@ local function attemptPickup(obj)
     task.wait(CFG.PickupWait)
     if not obj.Parent or not obj:IsDescendantOf(Workspace) then
         State.Pickups=State.Pickups+1; State.Fruits[obj]=nil; removeESP(obj)
-        status("Picked up: "..fruitName(obj)); notify("FRUIT COLLECTED",fruitName(obj))
+        status("Собран фрукт: "..fruitName(obj)); notify("ФРУКТ СОБРАН",fruitName(obj))
     else
-        status("Pickup not confirmed: "..fruitName(obj))
+        status("Сервер не подтвердил сбор: "..fruitName(obj))
     end
 end
 Filter.FocusLost:Connect(function()
-    State.Filter=Filter.Text or ""; State.Fruits={}; State.LastAttempt={}; clearESP()
+    State.Filter=Filter.Text or ""; State.Fruits={}; State.LastAttempt={}; State.HasScanned=false; clearESP()
     status(State.Filter=="" and "Filter cleared." or "Filter: "..State.Filter)
 end)
 Distance.FocusLost:Connect(function()
@@ -411,17 +450,17 @@ Interval.FocusLost:Connect(function()
     if n then CFG.ScanInterval=math.clamp(n,.5,10); Interval.Text=tostring(CFG.ScanInterval) else Interval.Text=tostring(CFG.ScanInterval) end
 end)
 Start.MouseButton1Click:Connect(function()
-    State.Running=true; Start.Text="● AUTO FARM: ON"; status("Auto farm enabled. Scanning...")
+    State.Running=true; Start.Text="● АВТОСБОР: ВКЛ"; status("Автосбор включён. Ищу фрукты...")
 end)
 Stop.MouseButton1Click:Connect(function()
-    State.Running=false; Start.Text="▶ START AUTO FARM"; status("Auto farm stopped.")
+    State.Running=false; Start.Text="▶ ЗАПУСТИТЬ СБОР"; status("Автосбор остановлен.")
 end)
 EspBtn.MouseButton1Click:Connect(function()
-    State.ESP=not State.ESP; EspBtn.Text=State.ESP and "ESP: ON" or "ESP: OFF"
+    State.ESP=not State.ESP; EspBtn.Text=State.ESP and "ПОДСВЕТКА: ВКЛ" or "ПОДСВЕТКА: ВЫКЛ"
     if not State.ESP then clearESP() else scan() end
 end)
 NotifyBtn.MouseButton1Click:Connect(function()
-    State.Notify=not State.Notify; NotifyBtn.Text=State.Notify and "NOTIFY: ON" or "NOTIFY: OFF"
+    State.Notify=not State.Notify; NotifyBtn.Text=State.Notify and "УВЕДОМЛЕНИЯ: ВКЛ" or "УВЕДОМЛЕНИЯ: ВЫКЛ"
 end)
 local minimized=false
 Min.MouseButton1Click:Connect(function()
@@ -429,23 +468,23 @@ Min.MouseButton1Click:Connect(function()
     for _,v in ipairs(Main:GetChildren()) do
         if v~=Bar and not v:IsA("UICorner") and not v:IsA("UIStroke") then v.Visible=not minimized end
     end
-    Main.Size=minimized and UDim2.fromOffset(310,48) or UDim2.fromOffset(310,580)
+    Main.Size=minimized and UDim2.fromOffset(340,48) or UDim2.fromOffset(340,620)
     Min.Text=minimized and "+" or "—"
 end)
 Close.MouseButton1Click:Connect(function()
     State.Alive=false; State.Running=false; clearESP(); Gui:Destroy()
 end)
 Gui.Parent=guiParent()
-notify("Fruit Collector","Loaded. Press START AUTO FARM.")
+notify("Сборщик фруктов","Загружен. Нажми «ЗАПУСТИТЬ СБОР».")
 task.spawn(function()
     local lastScan=0
     while State.Alive and Gui.Parent do
         local now=os.clock()
-        if (State.Running or State.ESP) and now-lastScan>=CFG.ScanInterval then scan(); lastScan=now end
+        if (State.Running or State.ESP) and not State.HasScanned then scan(); lastScan=now end
         if State.Running then
             local obj,d=nearest()
             if obj then status(string.format("Found %s • %.0fm",fruitName(obj),d or 0)); attemptPickup(obj)
-            else status("Searching for world-spawned fruits...") end
+            else status("Ищу фрукты, появившиеся в мире...") end
         end
         for obj,e in pairs(State.ESPObjects) do
             if not obj or not obj.Parent then removeESP(obj)
@@ -460,7 +499,7 @@ task.spawn(function()
         end
         local count=0
         for obj in pairs(State.Fruits) do if obj and obj.Parent and obj:IsDescendantOf(Workspace) then count=count+1 end end
-        Stats.Text=string.format("Found: %d | Attempts: %d | Pickups: %d",count,State.Attempts,State.Pickups)
+        Stats.Text=string.format("Найдено: %d | Попыток: %d | Собрано: %d",count,State.Attempts,State.Pickups)
         updateFruitList()
         task.wait(.5)
     end
