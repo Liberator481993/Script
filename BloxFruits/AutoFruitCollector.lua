@@ -356,7 +356,11 @@ local function updateFruitList()
     EmptyList.Visible = #entries == 0
 end
 local function scan()
-    if State.HasScanned then updateFruitList(); return State.Fruits end
+    if State.HasScanned then
+        if State.ESP then for obj in pairs(State.Fruits) do if obj and obj.Parent then addESP(obj) end end end
+        updateFruitList()
+        return State.Fruits
+    end
     local found={}
     for _,obj in ipairs(Workspace:GetDescendants()) do
         if isFruit(obj) then
@@ -483,7 +487,7 @@ task.spawn(function()
         if (State.Running or State.ESP) and not State.HasScanned then scan(); lastScan=now end
         if State.Running then
             local obj,d=nearest()
-            if obj then status(string.format("Found %s • %.0fm",fruitName(obj),d or 0)); attemptPickup(obj)
+            if obj then status(string.format("Найден %s • %.0f studs",fruitName(obj),d or 0)); attemptPickup(obj)
             else status("Ищу фрукты, появившиеся в мире...") end
         end
         for obj,e in pairs(State.ESPObjects) do
